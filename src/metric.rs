@@ -57,10 +57,8 @@ impl Metric {
 
 impl fmt::Display for Metric {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} created_on:{} updated_on:{}\n{:?}",
+        write!(f, "{} {:?}",
             self.name,
-            self.created_on,
-            self.updated_on,
             self.config,
         )
     }

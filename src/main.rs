@@ -91,6 +91,64 @@ fn fetch_points(session_points: &Session, m: &Metric, s: &Stage, time_start: i64
     Ok(())
 }
 
+fn prepare_component_query(table_name: &str, arguments: &Vec<&str>) -> Result<Statement> {
+    let mut q = format!("SELECT parent, name FROM biggraphite_metadata.{} WHERE ", table_name);
+    let mut component_number = 0;
+    let mut components = vec![];
+
+    for (id, component) in arguments.iter().enumerate() {
+        if *component == "*" {
+            component_number += 1;
+            continue;
+        }
+
+        if component_number != 0 {
+            q.push_str("AND ");
+        }
+
+        q.push_str(format!("component_{} = ? ", id).as_str());
+        component_number += 1;
+        components.push(component);
+    }
+
+    if component_number != 0 {
+        q.push_str("AND ");
+    }
+
+    // Adding last component for __END__.
+    q.push_str(format!("component_{} = ? ALLOW FILTERING;", component_number).as_str());
+    components.push(&"__END__");
+
+    let mut query = stmt!(q.as_str());
+
+    for (id, &arg) in components.iter().enumerate() {
+        query.bind(id, *arg)?;
+    }
+
+    Ok(query)
+}
+
+fn metric_list(session_metadata: &Session, glob: &str) -> Result<()> {
+    let components = glob.split(".").collect::<Vec<&str>>();
+
+    let query_directories = prepare_component_query("directories", &components)?;
+    let result = session_metadata.execute(&query_directories).wait()?;
+    for row in result.iter() {
+        let name = row.get_column_by_name("name".to_string()).unwrap().to_string();
+        println!("d {}", name);
+    }
+
+    let query = prepare_component_query("metrics", &components)?;
+    let result = session_metadata.execute(&query).wait()?;
+    for row in result.iter() {
+        let name = row.get_column_by_name("name".to_string()).unwrap().to_string();
+        let metric = fetch_metric(session_metadata, &name)?;
+        println!("m {}", metric);
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let matches = App::new("bgutil-rs")
                            .setting(AppSettings::SubcommandRequired)
@@ -117,7 +175,13 @@ fn main() -> Result<()> {
                                             .index(1)
                                             .required(true)
                                         ))
-                          .get_matches();
+                           .subcommand(SubCommand::with_name("list")
+                                       .about("List metrics with given pattern")
+                                       .arg(Arg::with_name("glob")
+                                            .index(1)
+                                            .required(true)
+                                        ))
+                           .get_matches();
 
     let contact_points_metadata = "tag--cstars07--cassandra-cstars07.query.consul.preprod.crto.in";
     let contact_points_data = "tag--cstars04--cassandra-cstars04.query.consul.preprod.crto.in";
@@ -184,6 +248,10 @@ fn main() -> Result<()> {
             }
 
             fetch_points(&session_points, &metric, &stage, time_start, time_end)?;
+        },
+        Some("list") => {
+            let matches = matches.subcommand_matches("list").unwrap();
+            metric_list(&session_metadata, matches.value_of("glob").unwrap())?;
         }
         None => {
             eprintln!("No command was used.");
