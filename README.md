@@ -17,10 +17,12 @@ USAGE:
     bgutil-rs <SUBCOMMAND>
 
 SUBCOMMANDS:
-    help    Prints this message or the help of the given subcommand(s)
-    info    Information about a metric
-    list    List metrics with given pattern
-    read    Read a metric contents
+    delete    Delete metric(s)
+    help      Prints this message or the help of the given subcommand(s)
+    info      Information about a metric
+    list      List metrics with given pattern
+    read      Read a metric contents
+    write     Write a metric and its value
 ```
 
 ### Info
@@ -105,6 +107,43 @@ d observability.testaroo.go_memstats_mallocs_total
 m observability.testaroo.go_memstats_next_gc_bytes {"aggregator": "average", "carbon_xfilesfactor": "0.500000", "retention": "11520*60s:720*3600s:730*86400s"}
 m observability.testaroo.go_memstats_mallocs_total {"aggregator": "average", "retention": "11520*60s:720*3600s:730*86400s", "carbon_xfilesfactor": "0.500000"}
 ...
+```
+
+
+### Write
+
+```sh
+$ cargo run -- write --help
+bgutil-rs-write
+Write a metric and its value
+
+USAGE:
+    bgutil-rs write [OPTIONS] <metric> <value>
+
+OPTIONS:
+        --retention <retention>
+    -t, --timestamp <timestamp>
+
+ARGS:
+    <metric>
+    <value>
+```
+
+### Delete
+
+```sh
+$ cargo run -- delete --help
+bgutil-rs-delete
+Delete metric(s)
+
+USAGE:
+    bgutil-rs delete [FLAGS] <metric>
+
+FLAGS:
+        --recursive
+
+ARGS:
+    <metric>
 ```
 
 ## Todo
