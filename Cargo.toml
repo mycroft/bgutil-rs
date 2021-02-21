@@ -11,3 +11,4 @@ cassandra-cpp = "0.15.1"
 chrono = "0.4"
 clap = "2.33.3"
 regex = "1.4.3"
+uuid = { version = "0.8.2", features = ["v4"] }

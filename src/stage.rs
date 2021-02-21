@@ -5,6 +5,7 @@
  */
 use std::fmt;
 use std::convert::TryFrom;
+use std::string::String;
 
 use regex::Regex;
 
@@ -128,54 +129,4 @@ impl fmt::Display for Stage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.table_name())
     }
-}
-
-pub struct TimeRange {
-    stage: Stage,
-    time_start: i64,
-    time_end: i64
-}
-
-impl TimeRange {
-    pub fn new(stage: &Stage, time_start: i64, time_end: i64) -> Self {
-        TimeRange {
-            stage: stage.clone(),
-            time_start: time_start,
-            time_end: time_end,
-        }
-    }
-
-    pub fn ranges(&self) -> Vec<(i64, i64, i64)> {
-        let first_offset = self.stage.time_offset_ms(self.time_start);
-        let last_offset = self.stage.time_offset_ms(self.time_end);
-
-        let mut offset = first_offset.0;
-        let mut offset_start = first_offset.1;
-
-        let mut out = vec![];
-
-        while offset != last_offset.0 {
-            out.push((offset, offset_start, self.stage.table_row_size_ms()));
-
-            offset_start = 0;
-            offset += self.stage.table_row_size_ms();
-        }
-
-        out.push((offset, offset_start, last_offset.1));
-
-        out
-    }
-}
-
-impl fmt::Display for TimeRange {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({} -> {})", self.stage, self.time_start, self.time_end)
-    }
-}
-
-#[test]
-fn timerange() {
-    let stage = Stage::try_from("11520*60s").unwrap();
-    assert_eq!(vec![(0, 2, 4)], TimeRange::new(&stage, 120, 240).ranges());
-    assert_eq!(vec![(0, 2, 11520),(691200000, 0, 4)], TimeRange::new(&stage, 120, 691200 + 240).ranges());
 }

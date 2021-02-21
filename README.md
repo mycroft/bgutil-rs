@@ -97,13 +97,137 @@ Example:
 $ cargo run -- list observability.*.up
 d observability.testaroo.up
 m observability.testaroo.up {"retention": "11520*60s:720*3600s:730*86400s", "aggregator": "average", "carbon_xfilesfactor": "0.500000"}
+
+$ time cargo run -- list observability.test*.go*
+d observability.testaroo.go_memstats_next_gc_bytes
+d observability.testaroo.go_memstats_mallocs_total
+...
+m observability.testaroo.go_memstats_next_gc_bytes {"aggregator": "average", "carbon_xfilesfactor": "0.500000", "retention": "11520*60s:720*3600s:730*86400s"}
+m observability.testaroo.go_memstats_mallocs_total {"aggregator": "average", "retention": "11520*60s:720*3600s:730*86400s", "carbon_xfilesfactor": "0.500000"}
+...
 ```
 
 ## Todo
 
 * command: read
-  - async
-  - human timestamps
+  - human timestamps (but unix timestamps are ok)
 * command: list
-  - Enhance pattern matching (with '{}', 'xxx*' or '*xxx'...)
+  - Missing pattern matching like {}, **
+* command: write
+  - Arguments handling
+* command: delete
+  - with recursive
+
+```
+usage: bgutil delete [--help] [-r] [--dry-run] path
+
+positional arguments:
+  path             One metric or subdirectory name
+
+optional arguments:
+  --help           show this help message and exit
+  -r, --recursive  Delete points for all metrics as a subtree
+  --dry-run        Only show commands to create/upgrade the schema.
+```
+
+* command: copy
+
+```
+usage: bgutil copy [--help] [-r] [--time-start TIME_START]
+                   [--time-end TIME_END] [--dry-run]
+                   [--src_retention SRC_RETENTION]
+                   [--dst_retention DST_RETENTION]
+                   src dst
+
+positional arguments:
+  src                   One source metric or subdirectory name
+  dst                   One destination metric or subdirectory name
+
+optional arguments:
+  --help                show this help message and exit
+  -r, --recursive       Copy points for all metrics as a subtree
+  --time-start TIME_START
+                        Copy points written later than this time.
+  --time-end TIME_END   Copy points written earlier than this time.
+  --dry-run             Only show commands to create/upgrade the schema.
+  --src_retention SRC_RETENTION
+                        Retention used to read points from the source metrics.
+  --dst_retention DST_RETENTION
+                        Retention used to write points to the destination
+                        metrics. It only works if retentions are similar, i.e.
+                        with same precisions.
+```
+
 * command: clean
+
+```
+usage: bgutil clean [--help] [--clean-cache] [--clean-backend]
+                    [--clean-corrupted] [--quiet] [--max-age MAX_AGE]
+                    [--start-key START_KEY] [--end-key END_KEY]
+                    [--shard SHARD] [--nshards NSHARDS]
+                    [--disable-clean-directories] [--disable-clean-metrics]
+
+optional arguments:
+  --help                show this help message and exit
+  --clean-cache         clean cache
+  --clean-backend       clean backend
+  --clean-corrupted     clean corrupted metrics
+  --quiet               Show no output unless there are problems.
+  --max-age MAX_AGE     Specify the age of metrics in seconds to evict (ie:
+                        3600 to delete older than one hour metrics)
+  --start-key START_KEY
+                        Start key.
+  --end-key END_KEY     End key.
+  --shard SHARD         Shard number.
+  --nshards NSHARDS     Number of shards.
+  --disable-clean-directories
+                        Disable cleaning directories
+  --disable-clean-metrics
+                        Disable cleaning outdated metrics
+
+```
+
+* command: repair
+
+```
+usage: bgutil repair [--help] [--start-key START_KEY] [--end-key END_KEY]
+                     [--shard SHARD] [--nshards NSHARDS] [--quiet]
+
+optional arguments:
+  --help                show this help message and exit
+  --start-key START_KEY
+                        Start key.
+  --end-key END_KEY     End key.
+  --shard SHARD         Shard number.
+  --nshards NSHARDS     Number of shards.
+  --quiet               Show no output unless there are problems.
+```
+
+* command: write
+
+```
+usage: bgutil write [--help] [-t TIMESTAMP] [-c COUNT]
+                    [--aggregator AGGREGATOR] [--retention RETENTION]
+                    [--x-files-factor X_FILES_FACTOR]
+                    metric value
+
+positional arguments:
+  metric                Name of the metric to update.
+  value                 Value to write at the select time.
+
+optional arguments:
+  --help                show this help message and exit
+  -t TIMESTAMP, --timestamp TIMESTAMP
+                        Timestamp at which to write the new point.
+  -c COUNT, --count COUNT
+                        Count associated with the value to be written.
+  --aggregator AGGREGATOR
+                        Aggregator function for the metric (average, last,
+                        max, min, sum).
+  --retention RETENTION
+                        Retention configuration for the metric.
+  --x-files-factor X_FILES_FACTOR
+                        Science fiction coefficient.
+```
+
+* command: test

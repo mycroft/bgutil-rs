@@ -3,7 +3,7 @@
  *
  * Author: Patrick MARIE <pm@mkz.me>
  */
-use crate::stage::Stage;
+use crate::Stage;
 
 use std::collections::HashMap;
 use std::fmt;
