@@ -9,9 +9,8 @@ use std::string::String;
 
 use regex::Regex;
 
-#[derive(Debug)]
+#[derive(Copy,Clone,Debug)]
 pub struct Stage {
-    stage: String,
     points: u32,
     precision: u32,
     factor: char,
@@ -51,7 +50,6 @@ impl TryFrom<&str> for Stage {
         let precision = captures.get(2).unwrap().as_str().parse::<u32>().unwrap();
 
         Ok(Stage {
-            stage: String::from(stage),
             points: points,
             precision: precision,
             factor: factor,
@@ -72,6 +70,10 @@ impl Stage {
         };
 
         factor * self.precision as i64
+    }
+
+    pub fn to_string(self: &Self) -> String {
+        format!("{}*{}{}", self.points, self.precision, self.factor)
     }
 
     pub fn time_offset_ms(self: &Self, ts: i64) -> (i64, i64) {
@@ -106,15 +108,6 @@ impl Stage {
     }
 }
 
-impl Clone for Stage {
-    fn clone(&self) -> Stage {
-        Stage {
-            stage: self.stage.to_string(),
-            ..*self
-        }
-    }
-}
-
 impl PartialEq for Stage {
     fn eq(&self, other: &Self) -> bool {
         self.points == other.points
@@ -127,6 +120,6 @@ impl Eq for Stage {}
 
 impl fmt::Display for Stage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.table_name())
+        write!(f, "{}", self.to_string())
     }
 }
