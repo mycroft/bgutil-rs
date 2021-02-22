@@ -3,12 +3,23 @@
  *
  * Author: Patrick MARIE <pm@mkz.me>
  */
-use crate::*;
 
-use cassandra_cpp::{BindRustType,Cluster,Error,LogLevel,Session};
+use std::str::FromStr;
+use std::convert::TryFrom;
+
+use crate::metric::Metric;
+use crate::session::Session;
+use crate::stage::Stage;
+use crate::timerange::TimeRange;
+
+use cassandra_cpp::Session as CassSession;
+use cassandra_cpp::Uuid as CassUuid;
+use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Consistency,Error,LogLevel,Map};
 use cassandra_cpp::{set_level,stmt};
 
-pub fn connect(contact_points: &str) -> Result<Session, Error> {
+use uuid::Uuid;
+
+pub fn connect(contact_points: &str) -> Result<CassSession, Error> {
     set_level(LogLevel::DISABLED);
 
     let mut cluster = Cluster::default();
@@ -27,11 +38,11 @@ pub fn fetch_metric(session: &Session, metric_name: &str) -> Result<Metric, Erro
     // XXX set consistency
     // query.set_consistency(Consistency::QUORUM);
 
-    let result =  session.execute(&query).wait()?;
+    let result =  session.metadata_session().execute(&query).wait()?;
     Ok(result.first_row().unwrap().into())
 }
 
-pub fn fetch_points(session_points: &Session, m: &Metric, s: &Stage, time_start: i64, time_end: i64) -> Result<(), Error> {
+pub fn fetch_points(session: &Session, m: &Metric, s: &Stage, time_start: i64, time_end: i64) -> Result<(), Error> {
     let table_name = s.table_name();
 
     let q = format!(
@@ -48,7 +59,7 @@ pub fn fetch_points(session_points: &Session, m: &Metric, s: &Stage, time_start:
         query.bind(2, range.1 as i16)?;
         query.bind(3, range.2 as i16)?;
 
-        let result =  session_points.execute(&query).wait()?;
+        let result =  session.points_session().execute(&query).wait()?;
 
         for row in result.iter() {
             let ts : i64 = row.get_column_by_name("time_start_ms".to_string())?.get_i64()?;
@@ -75,7 +86,7 @@ pub fn fetch_metrics(session: &Session, metric_names: &Vec<String>) -> Result<Ve
         query.bind(0, metric_name.as_str())?;
         query.set_consistency(Consistency::QUORUM)?;
 
-        let result = session.execute(&query);
+        let result = session.metadata_session().execute(&query);
         results.push(result);
     }
 
@@ -92,7 +103,7 @@ pub fn fetch_metrics(session: &Session, metric_names: &Vec<String>) -> Result<Ve
     Ok(out)
 }
 
-pub fn create_metric(session_metadata: &Session, metric: &str) -> Result<(), Error> {
+pub fn create_metric(session: &Session, metric: &str) -> Result<(), Error> {
     let mut batch = Batch::new(BatchType::LOGGED);
 
     let metrics_parts = metric.split(".").collect::<Vec<&str>>();
@@ -174,58 +185,58 @@ pub fn create_metric(session_metadata: &Session, metric: &str) -> Result<(), Err
 
     query.set_consistency(Consistency::LOCAL_QUORUM)?;
 
-    session_metadata.execute(&query).wait()?;
+    session.metadata_session().execute(&query).wait()?;
 
     // Write directories
-    session_metadata.execute_batch(batch).wait()?;
+    session.metadata_session().execute_batch(batch).wait()?;
 
     println!("Metric was written.");
 
     Ok(())
 }
 
-pub fn metric_delete(session_metadata: &Session, metric_name: &str) -> Result<(), Error> {
+pub fn metric_delete(session: &Session, metric_name: &str) -> Result<(), Error> {
     let mut query = stmt!("SELECT * FROM biggraphite_metadata.metrics_metadata WHERE name = ?");
     query.bind(0, metric_name)?;
 
-    let result = session_metadata.execute(&query).wait()?;
+    let result = session.metadata_session().execute(&query).wait()?;
     if result.row_count() == 0 {
         println!("Metric is not existing");
         return Ok(());
     }
 
-    let _metric = fetch_metric(&session_metadata, metric_name)?;
+    let _metric = fetch_metric(session, metric_name)?;
 
     let mut query = stmt!("DELETE FROM biggraphite_metadata.metrics_metadata WHERE name = ?;");
     query.bind(0, metric_name)?;
     query.set_consistency(Consistency::LOCAL_QUORUM)?;
-    session_metadata.execute(&query).wait()?;
+    session.metadata_session().execute(&query).wait()?;
 
     let mut query = stmt!("DELETE FROM biggraphite_metadata.metrics_metadata WHERE name = ?;");
     query.bind(0, metric_name)?;
     query.set_consistency(Consistency::LOCAL_QUORUM)?;
-    session_metadata.execute(&query).wait()?;
+    session.metadata_session().execute(&query).wait()?;
 
     let mut query = stmt!("DELETE FROM biggraphite_metadata.directories WHERE name = ?;");
     query.bind(0, metric_name)?;
     query.set_consistency(Consistency::LOCAL_QUORUM)?;
-    session_metadata.execute(&query).wait()?;
+    session.metadata_session().execute(&query).wait()?;
 
     Ok(())
 }
 
-pub fn metric_write(session_metadata: &Session, session_points: &Session, metric_name: &str, value: f64, retention: &str, timestamp: i64) -> Result<(), Error> {
+pub fn metric_write(session: &Session, metric_name: &str, value: f64, retention: &str, timestamp: i64) -> Result<(), Error> {
     let mut query = stmt!("SELECT * FROM biggraphite_metadata.metrics_metadata WHERE name = ?");
     query.bind(0, metric_name)?;
 
-    let result = session_metadata.execute(&query).wait()?;
+    let result = session.metadata_session().execute(&query).wait()?;
     if result.row_count() == 0 {
-        create_metric(session_metadata, metric_name)?;
+        create_metric(session, metric_name)?;
     }
 
     let stage = Stage::try_from(retention)?;
 
-    let metric = fetch_metric(&session_metadata, metric_name)?;
+    let metric = fetch_metric(session, metric_name)?;
     let (time_start_ms, offset) = stage.time_offset_ms(timestamp);
 
     let query = format!(
@@ -239,7 +250,7 @@ pub fn metric_write(session_metadata: &Session, session_points: &Session, metric
     query.bind(2, offset as i16)?;
     query.bind(3, value)?;
 
-    session_points.execute(&query).wait()?;
+    session.points_session().execute(&query).wait()?;
 
     Ok(())
 }

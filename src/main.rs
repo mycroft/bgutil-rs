@@ -3,18 +3,14 @@
  *
  * Author: Patrick MARIE <pm@mkz.me>
  */
-use std::str::FromStr;
+
 use std::convert::TryFrom;
 use std::error;
 
-use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,CassResult,Consistency,Error,Map,Statement};
-use cassandra_cpp::Session as CassSession;
-use cassandra_cpp::Uuid as CassUuid;
+use cassandra_cpp::{BindRustType,CassResult,Consistency,Error,Statement};
 use cassandra_cpp::{stmt};
 use chrono::Utc;
 use clap::{App,AppSettings,Arg,SubCommand};
-
-use uuid::Uuid;
 
 mod cassandra;
 mod metric;
@@ -23,10 +19,9 @@ mod stage;
 mod timerange;
 
 use crate::cassandra::*;
-use crate::metric::*;
 use crate::session::Session;
 use crate::stage::*;
-use crate::timerange::*;
+
 
 #[allow(dead_code)]
 fn describe_result(result: &CassResult) {
@@ -41,7 +36,7 @@ fn describe_result(result: &CassResult) {
     }
 }
 
-pub fn metric_info(session: &CassSession, metric_name: &str) -> Result<(), Error> {
+pub fn metric_info(session: &Session, metric_name: &str) -> Result<(), Error> {
     let metric = fetch_metric(session, metric_name)?;
 
     println!("{}", metric);
@@ -92,12 +87,12 @@ fn prepare_component_query(table_name: &str, arguments: &Vec<&str>) -> Result<St
     Ok(query)
 }
 
-fn metric_list(session_metadata: &CassSession, glob: &str) -> Result<(), Error> {
+fn metric_list(session: &Session, glob: &str) -> Result<(), Error> {
     let components = glob.split(".").collect::<Vec<&str>>();
 
     let mut query_directories = prepare_component_query("directories", &components)?;
     query_directories.set_consistency(Consistency::QUORUM)?;
-    let result = session_metadata.execute(&query_directories).wait()?;
+    let result = session.metadata_session().execute(&query_directories).wait()?;
     for row in result.iter() {
         let name = row.get_column_by_name("name".to_string()).unwrap().to_string();
         println!("d {}", name);
@@ -105,7 +100,7 @@ fn metric_list(session_metadata: &CassSession, glob: &str) -> Result<(), Error> 
 
     let mut query = prepare_component_query("metrics", &components)?;
     query.set_consistency(Consistency::QUORUM)?;
-    let result = session_metadata.execute(&query).wait()?;
+    let result = session.metadata_session().execute(&query).wait()?;
 
     let names = result
         .iter()
@@ -114,7 +109,7 @@ fn metric_list(session_metadata: &CassSession, glob: &str) -> Result<(), Error> 
         })
         .collect::<Vec<String>>();
 
-    let metrics = fetch_metrics(session_metadata, &names)?;
+    let metrics = fetch_metrics(session, &names)?;
     for metric in metrics {
         println!("m {}", metric);
     }
@@ -183,7 +178,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     match matches.subcommand_name() {
         Some("info") => {
             let matches = matches.subcommand_matches("info").unwrap();
-            metric_info(session.metadata_session(), matches.value_of("metric").unwrap())?;
+            metric_info(&session, matches.value_of("metric").unwrap())?;
         },
         Some("read") => {
             let matches = matches.subcommand_matches("read").unwrap();
@@ -215,7 +210,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             };
 
             let metric_name = matches.value_of("metric").unwrap();
-            let metric = fetch_metric(session.metadata_session(), metric_name)?;
+            let metric = fetch_metric(&session, metric_name)?;
 
             let available_stages = metric.stages()?;
             let stage = Stage::try_from(stage)?;
@@ -225,11 +220,11 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 return Ok(());
             }
 
-            fetch_points(session.points_session(), &metric, &stage, time_start, time_end)?;
+            fetch_points(&session, &metric, &stage, time_start, time_end)?;
         },
         Some("list") => {
             let matches = matches.subcommand_matches("list").unwrap();
-            metric_list(session.metadata_session(), matches.value_of("glob").unwrap())?;
+            metric_list(&session, matches.value_of("glob").unwrap())?;
         },
         Some("write") => {
             let matches = matches.subcommand_matches("write").unwrap();
@@ -249,7 +244,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 }
             };
 
-            metric_write(session.metadata_session(), session.points_session(), metric, value, retention, timestamp)?;
+            metric_write(&session, metric, value, retention, timestamp)?;
         },
         Some("delete") => {
             let matches = matches.subcommand_matches("delete").unwrap();
@@ -259,7 +254,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 unimplemented!();
             }
 
-            metric_delete(session.metadata_session(), &metric)?;
+            metric_delete(&session, &metric)?;
         }
         None => {
             eprintln!("No command was used.");
