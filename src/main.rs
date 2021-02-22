@@ -91,7 +91,7 @@ fn metric_list(session: &Session, glob: &str) -> Result<(), Error> {
     let components = glob.split(".").collect::<Vec<&str>>();
 
     let mut query_directories = prepare_component_query("directories", &components)?;
-    query_directories.set_consistency(Consistency::QUORUM)?;
+    query_directories.set_consistency(session.read_consistency())?;
     let result = session.metadata_session().execute(&query_directories).wait()?;
     for row in result.iter() {
         let name = row.get_column_by_name("name".to_string()).unwrap().to_string();
@@ -99,7 +99,7 @@ fn metric_list(session: &Session, glob: &str) -> Result<(), Error> {
     }
 
     let mut query = prepare_component_query("metrics", &components)?;
-    query.set_consistency(Consistency::QUORUM)?;
+    query.set_consistency(session.read_consistency())?;
     let result = session.metadata_session().execute(&query).wait()?;
 
     let names = result

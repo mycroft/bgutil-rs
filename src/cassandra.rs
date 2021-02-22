@@ -36,7 +36,7 @@ pub fn fetch_metric(session: &Session, metric_name: &str) -> Result<Metric, Erro
     query.bind(0, metric_name)?;
 
     // XXX set consistency
-    // query.set_consistency(Consistency::QUORUM);
+    // query.set_consistency(session.read_consistency());
 
     let result =  session.metadata_session().execute(&query).wait()?;
     Ok(result.first_row().unwrap().into())
@@ -84,7 +84,7 @@ pub fn fetch_metrics(session: &Session, metric_names: &Vec<String>) -> Result<Ve
     for metric_name in metric_names.iter() {
         let mut query = stmt!("SELECT * FROM biggraphite_metadata.metrics_metadata WHERE name = ?");
         query.bind(0, metric_name.as_str())?;
-        query.set_consistency(Consistency::QUORUM)?;
+        query.set_consistency(session.read_consistency())?;
 
         let result = session.metadata_session().execute(&query);
         results.push(result);
@@ -183,7 +183,7 @@ pub fn create_metric(session: &Session, metric: &str) -> Result<(), Error> {
     query.bind(1, config)?; // config
     query.bind(2, CassUuid::from_str(&uuid.to_hyphenated().to_string())?)?; 
 
-    query.set_consistency(Consistency::LOCAL_QUORUM)?;
+    query.set_consistency(session.write_consistency())?;
 
     session.metadata_session().execute(&query).wait()?;
 
@@ -209,17 +209,17 @@ pub fn metric_delete(session: &Session, metric_name: &str) -> Result<(), Error> 
 
     let mut query = stmt!("DELETE FROM biggraphite_metadata.metrics_metadata WHERE name = ?;");
     query.bind(0, metric_name)?;
-    query.set_consistency(Consistency::LOCAL_QUORUM)?;
+    query.set_consistency(session.write_consistency())?;
     session.metadata_session().execute(&query).wait()?;
 
     let mut query = stmt!("DELETE FROM biggraphite_metadata.metrics_metadata WHERE name = ?;");
     query.bind(0, metric_name)?;
-    query.set_consistency(Consistency::LOCAL_QUORUM)?;
+    query.set_consistency(session.write_consistency())?;
     session.metadata_session().execute(&query).wait()?;
 
     let mut query = stmt!("DELETE FROM biggraphite_metadata.directories WHERE name = ?;");
     query.bind(0, metric_name)?;
-    query.set_consistency(Consistency::LOCAL_QUORUM)?;
+    query.set_consistency(session.write_consistency())?;
     session.metadata_session().execute(&query).wait()?;
 
     Ok(())
