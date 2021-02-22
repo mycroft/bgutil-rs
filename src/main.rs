@@ -7,7 +7,7 @@
 use std::convert::TryFrom;
 use std::error;
 
-use cassandra_cpp::{BindRustType,CassResult,Consistency,Error,Statement};
+use cassandra_cpp::{BindRustType,CassResult,Error,Statement};
 use cassandra_cpp::{stmt};
 use chrono::Utc;
 use clap::{App,AppSettings,Arg,SubCommand};
@@ -87,31 +87,122 @@ fn prepare_component_query(table_name: &str, arguments: &Vec<&str>) -> Result<St
     Ok(query)
 }
 
+fn prepare_component_query_globstar(table_name: &str, arguments: &Vec<&str>) -> Result<Vec<Statement>, Error> {
+    let _q = format!("SELECT parent, name FROM biggraphite_metadata.{} WHERE ", table_name);
+    let _component_number = 0;
+
+    let mut out = vec![];
+
+    let pos_globstar = arguments.iter().enumerate().filter(|(_, &x)| x == "**").map(|(id, _)| id).collect::<Vec<usize>>();
+    if pos_globstar.len() != 1 {
+        // XXX return error
+        return Ok(vec![prepare_component_query(table_name, arguments)?]);
+    }
+
+    let pos_globstar = pos_globstar[0];
+    let mut queries = vec![];
+
+    let mut init_args = vec![];
+    let mut end_args = arguments[pos_globstar+1..].to_vec();
+    end_args.push("__END__");
+
+    for (id, el) in arguments[0..pos_globstar].iter().enumerate() {
+        if *el == "*" {
+            continue;
+        }
+
+        if el.ends_with("*") {
+            init_args.push((id, "LIKE", el.replace("*", "%")));
+        } else {
+            init_args.push((id, "=", el.to_string()));
+        }
+    }
+
+    let components = 16;
+
+    for id in init_args.len()..(components-end_args.len()+1) {
+        let mut current_query = init_args.to_vec();
+
+        for (sub_id, el) in end_args.iter().enumerate() {
+            if *el == "*" {
+                continue;
+            }
+
+            if el.ends_with("*") {
+                current_query.push((sub_id + id, "LIKE", el.replace("*", "%")));
+            } else {
+                current_query.push((sub_id + id, "=", el.to_string()));
+            }
+        }
+
+        queries.push(current_query);
+    }
+
+    for query in &queries {
+        let mut current_query = _q.to_string();
+
+        for el in query {
+            if el.0 != 0 {
+                current_query.push_str("AND ");
+            }
+
+            current_query.push_str(&format!("component_{} {} ? ", el.0, el.1));
+        }
+
+        current_query.push_str(&String::from("ALLOW FILTERING;"));
+
+        let mut statement = stmt!(&current_query);
+        for (id, el) in query.iter().enumerate() {
+            statement.bind(id, el.2.as_str())?;
+        }
+
+        out.push(statement);
+    }
+
+    Ok(out)
+}
+
 fn metric_list(session: &Session, glob: &str) -> Result<(), Error> {
     let components = glob.split(".").collect::<Vec<&str>>();
 
-    let mut query_directories = prepare_component_query("directories", &components)?;
-    query_directories.set_consistency(session.read_consistency())?;
-    let result = session.metadata_session().execute(&query_directories).wait()?;
-    for row in result.iter() {
-        let name = row.get_column_by_name("name".to_string()).unwrap().to_string();
-        println!("d {}", name);
+    let query_directories = prepare_component_query_globstar("directories", &components)?;
+    let mut results = vec![];
+
+    for mut q in query_directories {
+        q.set_consistency(session.read_consistency())?;
+        results.push(session.metadata_session().execute(&q));
     }
 
-    let mut query = prepare_component_query("metrics", &components)?;
-    query.set_consistency(session.read_consistency())?;
-    let result = session.metadata_session().execute(&query).wait()?;
+    for result in results {
+        let rows = result.wait()?;
+        for row in rows.iter() {
+            let name = row.get_column_by_name("name".to_string()).unwrap().to_string();
+            println!("d {}", name);
 
-    let names = result
-        .iter()
-        .map(|x| {
-            x.get_column_by_name("name".to_string()).unwrap().to_string()
-        })
-        .collect::<Vec<String>>();
+        }
+    }
 
-    let metrics = fetch_metrics(session, &names)?;
-    for metric in metrics {
-        println!("m {}", metric);
+    let query_metrics = prepare_component_query_globstar("metrics", &components)?;
+    let mut results = vec![];
+
+    for mut q in query_metrics {
+        q.set_consistency(session.read_consistency())?;
+        results.push(session.metadata_session().execute(&q));
+    }
+
+    for result in results {
+        let rows = result.wait()?;
+        let names = rows
+            .iter()
+            .map(|x| {
+                x.get_column_by_name("name".to_string()).unwrap().to_string()
+            })
+            .collect::<Vec<String>>();
+
+        let metrics = fetch_metrics(session, &names)?;
+        for metric in metrics {
+            println!("m {}", metric);
+        }
     }
 
     Ok(())

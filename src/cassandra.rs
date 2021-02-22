@@ -14,7 +14,7 @@ use crate::timerange::TimeRange;
 
 use cassandra_cpp::Session as CassSession;
 use cassandra_cpp::Uuid as CassUuid;
-use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Consistency,Error,LogLevel,Map};
+use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Error,LogLevel,Map};
 use cassandra_cpp::{set_level,stmt};
 
 use uuid::Uuid;

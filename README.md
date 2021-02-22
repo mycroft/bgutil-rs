@@ -155,7 +155,7 @@ ARGS:
 * command: read
   - human timestamps (but unix timestamps are ok)
 * command: list
-  - Missing pattern matching like {}, **
+  - Missing pattern matching like {abc,def}, **, [0-99]
 * command: write
   - Arguments handling
 * command: delete
