@@ -7,8 +7,6 @@ use std::fmt;
 use std::convert::TryFrom;
 use std::string::String;
 
-use regex::Regex;
-
 #[derive(Copy,Clone,Debug)]
 pub struct Stage {
     points: u32,
@@ -20,25 +18,15 @@ impl TryFrom<&str> for Stage {
     type Error = &'static str;
 
     fn try_from(stage: &str) -> Result<Self, Self::Error> {
-        let re = Regex::new(r"^(\d+)\*(\d+)(.)");
-
-        if let Err(_) = re {
-            return Err("regex initialisation failed");
+        let parts = stage.split("*").collect::<Vec<&str>>();
+        if parts.len() != 2 {
+            return Err("invalid retention string");
         }
 
-        let captures = match re.unwrap().captures(&stage) {
-            None => return Err("invalid regex capture"),
-            Some(c) => c,
-        };
+        let points = parts[0].parse::<u32>().unwrap();
+        let precision = &parts[1][0..parts[1].len()-1];
 
-        let points = captures.get(1).unwrap().as_str().parse::<u32>().unwrap();
-
-        let factor = captures.get(3).unwrap().as_str();
-        if factor.len() != 1 {
-            return Err("invalid factor length")
-        }
-
-        let factor = factor.chars().nth(0).unwrap();
+        let factor = &parts[1][parts[1].len()-1..].chars().nth(0).unwrap();
 
         match factor {
             's' | 'm' | 'h' | 'd' | 'w' | 'y' => {},
@@ -47,12 +35,12 @@ impl TryFrom<&str> for Stage {
             }
         };
 
-        let precision = captures.get(2).unwrap().as_str().parse::<u32>().unwrap();
+        let precision = precision.parse::<u32>().unwrap();
 
         Ok(Stage {
             points: points,
             precision: precision,
-            factor: factor,
+            factor: *factor,
         })
     }
 }
@@ -70,6 +58,10 @@ impl Stage {
         };
 
         factor * self.precision as i64
+    }
+
+    pub fn points(self: &Self) -> u32 {
+        self.points
     }
 
     pub fn to_string(self: &Self) -> String {

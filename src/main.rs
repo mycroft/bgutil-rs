@@ -4,6 +4,7 @@
  * Author: Patrick MARIE <pm@mkz.me>
  */
 
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error;
 
@@ -21,6 +22,7 @@ mod timerange;
 use crate::cassandra::*;
 use crate::session::Session;
 use crate::stage::*;
+use crate::metric::Metric;
 
 
 #[allow(dead_code)]
@@ -259,6 +261,14 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                                        .arg(Arg::with_name("metric")
                                             .index(1)
                                             .required(true)))
+                           .subcommand(SubCommand::with_name("stats")
+                                        .about("Stats")
+                                        .arg(Arg::with_name("start-key")
+                                             .long("start-key")
+                                             .takes_value(true))
+                                        .arg(Arg::with_name("end-key")
+                                             .long("end-key")
+                                             .takes_value(true)))
                            .get_matches();
 
     let contact_points_metadata = "tag--cstars07--cassandra-cstars07.query.consul.preprod.crto.in";
@@ -346,12 +356,102 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             }
 
             metric_delete(&session, &metric)?;
-        }
+        },
+        Some("stats") => {
+            let matches = matches.subcommand_matches("stats").unwrap();
+            let start_key = matches.value_of("start-key"); // 0
+            let end_key = matches.value_of("end-key"); // 100000000000000
+
+            let start_key = match start_key {
+                None => 0,
+                Some(s) => match s.parse::<i64>() {
+                    Ok(n) => n,
+                    Err(_) => {
+                        eprintln!("Could not parse {}", s);
+                        return Ok(())
+                    }
+                }
+            };
+
+            let end_key = match end_key {
+                None => 100000000000000,
+                Some(s) => match s.parse::<i64>() {
+                    Ok(n) => n,
+                    Err(_) => {
+                        eprintln!("Could not parse {}", s);
+                        return Ok(())
+                    }
+                }
+            };
+
+            metric_stats(&session, start_key, end_key)?;
+        },
         None => {
             eprintln!("No command was used.");
             return Ok(());
         },
         _ => {}
+    }
+
+    Ok(())
+}
+
+
+fn metric_stats(session: &Session, start_key: i64, end_key: i64) -> Result<(), Error> {
+    let q =
+        "SELECT id, name, token(name), config, created_on, updated_on, read_on \
+         FROM biggraphite_metadata.metrics_metadata WHERE token(name) > ? LIMIT 1000";
+
+    let mut current_token = start_key;
+    let mut n = 0;
+    let mut points : u64 = 0;
+
+    let mut stats : HashMap<String, usize> = HashMap::new();
+
+    while current_token < end_key {
+        let mut query = stmt!(q);
+        query.bind(0, current_token)?;
+
+        let results = session.metadata_session().execute(&query).wait()?;
+
+        for row in results.iter() {
+            current_token = row.get_column(2)?.get_i64()?;
+
+            let metric : Metric = row.into();
+            let stages = match metric.stages() {
+                Ok(stages) => stages,
+                Err(_) => continue,
+            };
+
+            for stage in stages {
+                points += stage.points() as u64;
+            }
+
+            let parts = metric.name().split(".").collect::<Vec<&str>>();
+
+            *stats.entry(String::from(parts[0])).or_insert(0) += 1;
+
+            // println!("{}: {}", current_token, metric.name());
+            n += 1;
+        }
+    }
+
+    let p : f64 = ((current_token - start_key) / std::i64::MAX) as f64;
+
+    println!("Range: {} -> {} ({:.4}%)", start_key, current_token, 100. * p);
+    println!("{} metrics", n);
+    println!("{} points", points);
+    println!("-----");
+
+    let mut vec : Vec<(&String, &usize)> = stats.iter().collect();
+    vec.sort_by(|a, b| b.1.cmp(a.1));
+
+    for (id, v) in vec.iter().enumerate() {
+        println!("{} {}", v.0, v.1);
+
+        if id == 10 {
+            break;
+        }
     }
 
     Ok(())

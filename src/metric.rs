@@ -25,6 +25,10 @@ impl Metric {
         &self.id
     }
 
+    pub fn name(self: &Self) -> &String {
+        &self.name
+    }
+
     pub fn config(self: &Self, name: String) -> Result<String, String> {
         let res = self.config.get(&name);
         if let Some(v) = res {
@@ -78,20 +82,31 @@ impl From<String> for Metric {
 
 impl From<Row> for Metric {
     fn from(row: Row) -> Self {
-        let config_collection = row.get_column_by_name("config".to_string()).unwrap().get_map().unwrap();
         let mut config : HashMap<String, String> = HashMap::new();
-        config_collection
-            .map(|(k, v)| config.insert(k.to_string(), v.to_string()))
-            .count();
+        match row.get_column_by_name("config".to_string()).unwrap().get_map() {
+            Ok(v) => {
+                v.map(|(k, v)| config.insert(k.to_string(), v.to_string()))
+                 .count();
+            },
+            Err(_) => {},
+        };
 
         let created_on = row.get_column_by_name("created_on".to_string()).unwrap();
-        let created_on_timestamp = created_on.get_uuid().unwrap().timestamp();
+        let created_on_timestamp = match created_on.get_uuid() {
+            Err(_) => 0,
+            Ok(v) => v.timestamp(),
+        };
 
         let updated_on = row.get_column_by_name("updated_on".to_string()).unwrap();
         let updated_on_timestamp = updated_on.get_uuid().unwrap().timestamp();
 
+        let uuid = match row.get_column_by_name("id".to_string()).unwrap().get_uuid() {
+            Ok(v) => v.to_string(),
+            Err(_) => String::from(""),
+        };
+
         Self {
-            id: row.get_column_by_name("id".to_string()).unwrap().get_uuid().unwrap().to_string(),
+            id: uuid,
             name: row.get_column_by_name("name".to_string()).unwrap().to_string(),
             config: config,
             created_on: created_on_timestamp,
