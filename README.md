@@ -21,11 +21,13 @@ USAGE:
     bgutil-rs <SUBCOMMAND>
 
 SUBCOMMANDS:
+    clean     Stats
     delete    Delete metric(s)
     help      Prints this message or the help of the given subcommand(s)
     info      Information about a metric
     list      List metrics with given pattern
     read      Read a metric contents
+    stats     Stats
     write     Write a metric and its value
 ```
 
@@ -150,6 +152,25 @@ ARGS:
     <metric>
 ```
 
+### Clean
+
+```sh
+$ cargo run -- clean --help
+bgutil-rs-clean 
+Stats
+
+USAGE:
+    bgutil-rs clean [FLAGS] [OPTIONS]
+
+FLAGS:
+        --clean-directories
+        --clean-metrics
+
+OPTIONS:
+        --end-key <end-key>
+        --start-key <start-key>
+```
+
 ## Todo
 
 * command: read
@@ -160,3 +181,6 @@ ARGS:
   - Arguments handling
 * command: delete
   - with recursive
+* command: clean
+  - progress bar
+* ...
