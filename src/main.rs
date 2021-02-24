@@ -213,6 +213,14 @@ fn metric_list(session: &Session, glob: &str) -> Result<(), Error> {
 fn main() -> Result<(), Box<dyn error::Error>> {
     let matches = App::new("bgutil-rs")
                            .setting(AppSettings::SubcommandRequired)
+                           .arg(Arg::with_name("contact-metadata")
+                                .long("contact-metadata")
+                                .env("CASSANDRA_CONTACT_METADATA")
+                                .takes_value(true))
+                           .arg(Arg::with_name("contact-points")
+                                .long("contact-points")
+                                .env("CASSANDRA_CONTACT_POINTS")
+                                .takes_value(true))
                            .subcommand(SubCommand::with_name("info")
                                        .about("Information about a metric")
                                        .arg(Arg::with_name("metric")
@@ -283,8 +291,15 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                                              .long("clean-directories")))
                            .get_matches();
 
-    let contact_points_metadata = "tag--cstars07--cassandra-cstars07.query.consul.preprod.crto.in";
-    let contact_points_data = "tag--cstars04--cassandra-cstars04.query.consul.preprod.crto.in";
+    let mut contact_points_metadata = "localhost";
+    if matches.is_present("contact-metadata") {
+        contact_points_metadata = matches.value_of("contact-metadata").unwrap();
+    }
+
+    let mut contact_points_data = "localhost";
+    if matches.is_present("contact-points") {
+        contact_points_data = matches.value_of("contact-points").unwrap();
+    }
 
     let session = Session::new(&contact_points_metadata, &contact_points_data)?;
 
