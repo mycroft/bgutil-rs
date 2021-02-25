@@ -3,9 +3,7 @@
  *
  * Author: Patrick MARIE <pm@mkz.me>
  */
-
 use std::str::FromStr;
-use std::convert::TryFrom;
 
 use crate::metric::Metric;
 use crate::session::Session;
@@ -14,7 +12,7 @@ use crate::timerange::TimeRange;
 
 use cassandra_cpp::Session as CassSession;
 use cassandra_cpp::Uuid as CassUuid;
-use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Error,LogLevel,Map};
+use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Error,LogLevel,Map,Statement};
 use cassandra_cpp::{set_level,stmt};
 
 use uuid::Uuid;
@@ -29,6 +27,124 @@ pub fn connect(contact_points: &str) -> Result<CassSession, Error> {
     cluster.set_protocol_version(4)?;
 
     cluster.connect()
+}
+
+pub fn prepare_component_query(table_name: &str, arguments: &Vec<&str>) -> Result<Statement, Error> {
+    let mut q = format!("SELECT parent, name FROM biggraphite_metadata.{} WHERE ", table_name);
+    let mut component_number = 0;
+    let mut components = vec![];
+
+    for (id, component) in arguments.iter().enumerate() {
+        let mut operator = "=";
+
+        if *component == "*" {
+            component_number += 1;
+            continue;
+        }
+
+        if component_number != 0 {
+            q.push_str("AND ");
+        }
+
+        if component.ends_with("*") {
+            operator = "LIKE";
+        }
+
+        q.push_str(format!("component_{} {} ? ", id, operator).as_str());
+        component_number += 1;
+        components.push(component.replace("*", "%"));
+    }
+
+    if component_number != 0 {
+        q.push_str("AND ");
+    }
+
+    // Adding last component for __END__.
+    q.push_str(format!("component_{} = ? ALLOW FILTERING;", component_number).as_str());
+    components.push("__END__".to_string());
+
+    let mut query = stmt!(q.as_str());
+
+    for (id, arg) in components.iter().enumerate() {
+        query.bind(id, arg.as_str())?;
+    }
+
+    Ok(query)
+}
+
+pub fn prepare_component_query_globstar(table_name: &str, arguments: &Vec<&str>) -> Result<Vec<Statement>, Error> {
+    let _q = format!("SELECT parent, name FROM biggraphite_metadata.{} WHERE ", table_name);
+    let _component_number = 0;
+
+    let mut out = vec![];
+
+    let pos_globstar = arguments.iter().enumerate().filter(|(_, &x)| x == "**").map(|(id, _)| id).collect::<Vec<usize>>();
+    if pos_globstar.len() != 1 {
+        // XXX return error
+        return Ok(vec![prepare_component_query(table_name, arguments)?]);
+    }
+
+    let pos_globstar = pos_globstar[0];
+    let mut queries = vec![];
+
+    let mut init_args = vec![];
+    let mut end_args = arguments[pos_globstar+1..].to_vec();
+    end_args.push("__END__");
+
+    for (id, el) in arguments[0..pos_globstar].iter().enumerate() {
+        if *el == "*" {
+            continue;
+        }
+
+        if el.ends_with("*") {
+            init_args.push((id, "LIKE", el.replace("*", "%")));
+        } else {
+            init_args.push((id, "=", el.to_string()));
+        }
+    }
+
+    let components = 16;
+
+    for id in init_args.len()..(components-end_args.len()+1) {
+        let mut current_query = init_args.to_vec();
+
+        for (sub_id, el) in end_args.iter().enumerate() {
+            if *el == "*" {
+                continue;
+            }
+
+            if el.ends_with("*") {
+                current_query.push((sub_id + id, "LIKE", el.replace("*", "%")));
+            } else {
+                current_query.push((sub_id + id, "=", el.to_string()));
+            }
+        }
+
+        queries.push(current_query);
+    }
+
+    for query in &queries {
+        let mut current_query = _q.to_string();
+
+        for el in query {
+            if el.0 != 0 {
+                current_query.push_str("AND ");
+            }
+
+            current_query.push_str(&format!("component_{} {} ? ", el.0, el.1));
+        }
+
+        current_query.push_str(&String::from("ALLOW FILTERING;"));
+
+        let mut statement = stmt!(&current_query);
+        for (id, el) in query.iter().enumerate() {
+            statement.bind(id, el.2.as_str())?;
+        }
+
+        out.push(statement);
+    }
+
+    Ok(out)
 }
 
 pub fn fetch_metric(session: &Session, metric_name: &str) -> Result<Metric, Error> {
@@ -195,62 +311,3 @@ pub fn create_metric(session: &Session, metric: &str) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn metric_delete(session: &Session, metric_name: &str) -> Result<(), Error> {
-    let mut query = stmt!("SELECT * FROM biggraphite_metadata.metrics_metadata WHERE name = ?");
-    query.bind(0, metric_name)?;
-
-    let result = session.metadata_session().execute(&query).wait()?;
-    if result.row_count() == 0 {
-        println!("Metric is not existing");
-        return Ok(());
-    }
-
-    let _metric = fetch_metric(session, metric_name)?;
-
-    let mut query = stmt!("DELETE FROM biggraphite_metadata.metrics_metadata WHERE name = ?;");
-    query.bind(0, metric_name)?;
-    query.set_consistency(session.write_consistency())?;
-    session.metadata_session().execute(&query).wait()?;
-
-    let mut query = stmt!("DELETE FROM biggraphite_metadata.metrics_metadata WHERE name = ?;");
-    query.bind(0, metric_name)?;
-    query.set_consistency(session.write_consistency())?;
-    session.metadata_session().execute(&query).wait()?;
-
-    let mut query = stmt!("DELETE FROM biggraphite_metadata.directories WHERE name = ?;");
-    query.bind(0, metric_name)?;
-    query.set_consistency(session.write_consistency())?;
-    session.metadata_session().execute(&query).wait()?;
-
-    Ok(())
-}
-
-pub fn metric_write(session: &Session, metric_name: &str, value: f64, retention: &str, timestamp: i64) -> Result<(), Error> {
-    let mut query = stmt!("SELECT * FROM biggraphite_metadata.metrics_metadata WHERE name = ?");
-    query.bind(0, metric_name)?;
-
-    let result = session.metadata_session().execute(&query).wait()?;
-    if result.row_count() == 0 {
-        create_metric(session, metric_name)?;
-    }
-
-    let stage = Stage::try_from(retention)?;
-
-    let metric = fetch_metric(session, metric_name)?;
-    let (time_start_ms, offset) = stage.time_offset_ms(timestamp);
-
-    let query = format!(
-        "INSERT INTO biggraphite.{} (metric, time_start_ms, offset, value) VALUES (?, ?, ?, ?);",
-        stage.table_name()
-    );
-
-    let mut query = stmt!(&query);
-    query.bind(0, CassUuid::from_str(metric.id().as_str())?)?;
-    query.bind(1, time_start_ms)?;
-    query.bind(2, offset as i16)?;
-    query.bind(3, value)?;
-
-    session.points_session().execute(&query).wait()?;
-
-    Ok(())
-}
