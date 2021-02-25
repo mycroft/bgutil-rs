@@ -3,14 +3,15 @@
  *
  * Author: Patrick MARIE <pm@mkz.me>
  */
+use std::error;
 
 use cassandra_cpp::stmt;
-use cassandra_cpp::{BindRustType,Error};
+use cassandra_cpp::BindRustType;
 use crate::fetch_metric;
 
 use crate::Session;
 
-pub fn metric_delete(session: &Session, metric_name: &str) -> Result<(), Error> {
+pub fn metric_delete(session: &Session, metric_name: &str) -> Result<(), Box<dyn error::Error>> {
     let mut query = stmt!("SELECT * FROM biggraphite_metadata.metrics_metadata WHERE name = ?");
     query.bind(0, metric_name)?;
 

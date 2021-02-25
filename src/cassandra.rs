@@ -4,6 +4,8 @@
  * Author: Patrick MARIE <pm@mkz.me>
  */
 use std::str::FromStr;
+use std::fmt;
+use std::error;
 
 use crate::metric::Metric;
 use crate::session::Session;
@@ -16,6 +18,17 @@ use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Error,Lo
 use cassandra_cpp::{set_level,stmt};
 
 use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+struct NoRecord;
+
+impl fmt::Display for NoRecord {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "no record suitable")
+    }
+}
+
+impl error::Error for NoRecord {}
 
 pub fn connect(contact_points: &str) -> Result<CassSession, Error> {
     set_level(LogLevel::DISABLED);
@@ -147,14 +160,17 @@ pub fn prepare_component_query_globstar(table_name: &str, arguments: &Vec<&str>)
     Ok(out)
 }
 
-pub fn fetch_metric(session: &Session, metric_name: &str) -> Result<Metric, Error> {
+pub fn fetch_metric(session: &Session, metric_name: &str) -> Result<Metric, Box<dyn error::Error>> {
     let mut query = stmt!("SELECT * FROM biggraphite_metadata.metrics_metadata WHERE name = ?");
+    query.set_consistency(session.read_consistency())?;
     query.bind(0, metric_name)?;
 
-    // XXX set consistency
-    // query.set_consistency(session.read_consistency());
+    let result = session.metadata_session().execute(&query).wait()?;
 
-    let result =  session.metadata_session().execute(&query).wait()?;
+    if result.row_count() == 0 {
+        return Err(NoRecord.into());
+    }
+
     Ok(result.first_row().unwrap().into())
 }
 
@@ -311,3 +327,33 @@ pub fn create_metric(session: &Session, metric: &str) -> Result<(), Error> {
     Ok(())
 }
 
+pub fn delete_metric(session: &Session, name: &str) -> Result<(), Error> {
+    let namespace = "biggraphite_metadata";
+    let delete_metric_query = format!("DELETE FROM {}.metrics WHERE name = ?;", namespace);
+    let delete_metadata_query = format!("DELETE FROM {}.metrics_metadata WHERE name = ?;", namespace);
+
+    let mut delete_metric_query = stmt!(delete_metric_query.as_str());
+    delete_metric_query.set_consistency(session.write_consistency())?;
+    delete_metric_query.bind(0, name)?;
+    session.metadata_session().execute(&delete_metric_query).wait()?;
+
+    let mut delete_metadata_query = stmt!(delete_metadata_query.as_str());
+    delete_metric_query.set_consistency(session.write_consistency())?;
+    delete_metadata_query.bind(0, name)?;
+    session.metadata_session().execute(&delete_metric_query).wait()?;
+
+    Ok(())
+}
+
+
+pub fn delete_directory(session: &Session, name: &str) -> Result<(), Error> {
+    let namespace = "biggraphite_metadata";
+    let delete_directory_query = format!("DELETE FROM {}.directories WHERE name = ?;", namespace);
+
+    let mut delete_directory_query = stmt!(delete_directory_query.as_str());
+    delete_directory_query.set_consistency(session.write_consistency())?;
+    delete_directory_query.bind(0, name)?;
+    session.metadata_session().execute(&delete_directory_query).wait()?;
+
+    Ok(())
+}

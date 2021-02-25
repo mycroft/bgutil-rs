@@ -29,6 +29,10 @@ impl Metric {
         &self.name
     }
 
+    pub fn updated_on(self: &Self) -> u64 {
+        self.updated_on
+    }
+
     pub fn config(self: &Self, name: String) -> Result<String, String> {
         let res = self.config.get(&name);
         if let Some(v) = res {

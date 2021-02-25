@@ -26,6 +26,7 @@ use crate::cmd::clean::*;
 use crate::cmd::delete::*;
 use crate::cmd::info::*;
 use crate::cmd::list::*;
+use crate::cmd::local_clean::*;
 use crate::cmd::stats::*;
 use crate::cmd::write::*;
 
@@ -110,7 +111,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                                              .long("end-key")
                                              .takes_value(true)))
                            .subcommand(SubCommand::with_name("clean")
-                                        .about("Stats")
+                                        .about("Clean outdated metrics & empty directories")
                                         .arg(Arg::with_name("start-key")
                                              .long("start-key")
                                              .takes_value(true))
@@ -121,6 +122,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                                              .long("clean-metrics"))
                                         .arg(Arg::with_name("clean-directories")
                                              .long("clean-directories")))
+                           .subcommand(SubCommand::with_name("local-clean")
+                                        .about("Clean a directory of outdated metrics & empty sub-directories")
+                                        .arg(Arg::with_name("directory")))
                            .get_matches();
 
     let mut contact_points_metadata = "localhost";
@@ -278,6 +282,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
             metrics_clean(&session, start_key, end_key, clean_metrics, clean_directories)?;
         },
+        Some("local-clean") => {
+            let matches = matches.subcommand_matches("local-clean").unwrap();
+            let directory = matches.value_of("directory").unwrap();
+
+            metrics_local_clean(&session, directory)?;
+        }
         None => {
             eprintln!("No command was used.");
             return Ok(());

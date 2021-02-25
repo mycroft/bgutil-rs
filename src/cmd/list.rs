@@ -38,7 +38,13 @@ pub fn metric_list(session: &Session, glob: &str) -> Result<(), Error> {
     }
 
     for result in results {
-        let rows = result.wait()?;
+        let res = result.wait();
+        if let Err(err) = res {
+            eprintln!("Query failed: {}", err);
+            continue;
+        }
+
+        let rows = res.unwrap();
         let names = rows
             .iter()
             .map(|x| {
