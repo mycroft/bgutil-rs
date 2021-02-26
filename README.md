@@ -11,24 +11,35 @@ Don't forget to download & install [cassandra-cpp](https://downloads.datastax.co
 ## Run
 
 ```sh
-$ cargo build
-    Finished dev [unoptimized + debuginfo] target(s) in 0.04s
-
-$ cargo run -- --help
 bgutil-rs 
 
 USAGE:
-    bgutil-rs <SUBCOMMAND>
+    bgutil-rs [FLAGS] [OPTIONS] <SUBCOMMAND>
+
+FLAGS:
+        --dry-run    Do not write in database (local-clean only)
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+        --contact-metadata <contact-metadata>
+             [env: CASSANDRA_CONTACT_METADATA=localhost]
+
+        --contact-points <contact-points>
+             [env: CASSANDRA_CONTACT_POINTS=localhost]
+
 
 SUBCOMMANDS:
-    clean     Stats
-    delete    Delete metric(s)
-    help      Prints this message or the help of the given subcommand(s)
-    info      Information about a metric
-    list      List metrics with given pattern
-    read      Read a metric contents
-    stats     Stats
-    write     Write a metric and its value
+    clean          Clean outdated metrics & empty directories
+    delete         Delete metric(s)
+    help           Prints this message or the help of the given subcommand(s)
+    info           Information about a metric
+    list           List metrics with given pattern
+    local-clean    Clean a directory of outdated metrics & empty sub-directories
+    read           Read a metric contents
+    stats          Stats
+    write          Write a metric and its value
+
 ```
 
 ### Info
@@ -156,7 +167,7 @@ ARGS:
 
 ```sh
 $ cargo run -- clean --help
-bgutil-rs-clean 
+bgutil-rs-clean
 Stats
 
 USAGE:
@@ -171,6 +182,27 @@ OPTIONS:
         --start-key <start-key>
 ```
 
+### Local-clean
+
+Clean outdated metrics in a given directory.
+
+```sh
+$ cargo run -- local-clean --help
+bgutil-rs-local-clean 
+Clean a directory of outdated metrics & empty sub-directories
+
+USAGE:
+    bgutil-rs local-clean <directory>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+ARGS:
+    <directory>
+```
+
+
 ## Todo
 
 * command: read
@@ -184,3 +216,8 @@ OPTIONS:
 * command: clean
   - progress bar
 * ...
+
+
+## Dedication
+
+This piece of software was written during the mourning of Jean-Yves Moyart, aka Maître Mô, 21/10/1967-20/02/2021. My thoughts were with him, his family, his friends and all of us, who really appreciated him. Rest in Peace.
