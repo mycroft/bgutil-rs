@@ -10,6 +10,7 @@ use std::fmt;
 use std::convert::TryFrom;
 
 use cassandra_cpp::Row;
+use chrono::Utc;
 
 #[derive(Debug)]
 pub struct Metric {
@@ -95,14 +96,25 @@ impl From<Row> for Metric {
             Err(_) => {},
         };
 
-        let created_on = row.get_column_by_name("created_on".to_string()).unwrap();
-        let created_on_timestamp = match created_on.get_uuid() {
-            Err(_) => 0,
-            Ok(v) => v.timestamp(),
+        let created_on = row.get_column_by_name("created_on".to_string());
+        let created_on_timestamp = if let Ok(creation_time) = created_on {
+            match creation_time.get_uuid() {
+                Err(_) => 0,
+                Ok(v) => v.timestamp(),
+            }
+        } else {
+            Utc::now().timestamp() as u64
         };
 
-        let updated_on = row.get_column_by_name("updated_on".to_string()).unwrap();
-        let updated_on_timestamp = updated_on.get_uuid().unwrap().timestamp();
+        let updated_on = row.get_column_by_name("updated_on".to_string());
+        let updated_on_timestamp = if let Ok(updated_time) = updated_on {
+            match updated_time.get_uuid() {
+                Err(_) => 0,
+                Ok(v) => v.timestamp(),
+            }
+        } else {
+            Utc::now().timestamp() as u64
+        };
 
         let uuid = match row.get_column_by_name("id".to_string()).unwrap().get_uuid() {
             Ok(v) => v.to_string(),

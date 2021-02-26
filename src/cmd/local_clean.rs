@@ -52,6 +52,9 @@ fn clean_metrics_in_directory(session: &Session, directory: &str) -> Result<(), 
             }
 
             println!("Deleting metric {}", metric.name());
+            if session.is_dry_run() {
+                continue;
+            }
             delete_metric(session, metric.name())?;
         }
     }
@@ -97,6 +100,9 @@ fn clean_empty_directories_in_directory(session: &Session, directory: &str) -> R
             }
 
             println!("Deleting directory {}", name);
+            if session.is_dry_run() {
+                continue;
+            }
             delete_directory(session, &name)?;
         }
     }

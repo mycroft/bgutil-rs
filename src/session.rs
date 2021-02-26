@@ -13,6 +13,7 @@ use crate::cassandra::*;
 pub struct Session {
     metadata: CassSession,
     points: CassSession,
+    dry_run: bool,
 }
 
 impl Session {
@@ -23,9 +24,14 @@ impl Session {
         let session = Self {
             metadata: metadata,
             points: points,
+            dry_run: false,
         };
 
         Ok(session)
+    }
+
+    pub fn set_dry_run(&mut self, dry_run: bool) {
+        self.dry_run = dry_run
     }
 
     pub fn metadata_session(&self) -> &CassSession {
@@ -44,5 +50,9 @@ impl Session {
     // XXX to make configurable
     pub fn write_consistency(&self) -> Consistency {
         Consistency::LOCAL_QUORUM
+    }
+
+    pub fn is_dry_run(&self) -> bool {
+        self.dry_run
     }
 }

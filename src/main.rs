@@ -54,6 +54,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                                 .long("contact-points")
                                 .env("CASSANDRA_CONTACT_POINTS")
                                 .takes_value(true))
+                           .arg(Arg::with_name("dry-run")
+                                .help("Do not write in database (local-clean only)")
+                                .long("dry-run"))
                            .subcommand(SubCommand::with_name("info")
                                        .about("Information about a metric")
                                        .arg(Arg::with_name("metric")
@@ -124,7 +127,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                                              .long("clean-directories")))
                            .subcommand(SubCommand::with_name("local-clean")
                                         .about("Clean a directory of outdated metrics & empty sub-directories")
-                                        .arg(Arg::with_name("directory")))
+                                        .arg(Arg::with_name("directory")
+                                             .index(1)
+                                             .required(true)))
                            .get_matches();
 
     let mut contact_points_metadata = "localhost";
@@ -137,7 +142,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         contact_points_data = matches.value_of("contact-points").unwrap();
     }
 
-    let session = Session::new(&contact_points_metadata, &contact_points_data)?;
+    let dry_run = matches.is_present("dry-run");
+
+    let mut session = Session::new(&contact_points_metadata, &contact_points_data)?;
+    session.set_dry_run(dry_run);
 
     match matches.subcommand_name() {
         Some("info") => {

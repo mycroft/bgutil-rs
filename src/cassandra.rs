@@ -14,9 +14,10 @@ use crate::timerange::TimeRange;
 
 use cassandra_cpp::Session as CassSession;
 use cassandra_cpp::Uuid as CassUuid;
-use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Error,LogLevel,Map,Statement};
+use cassandra_cpp::{Batch,BatchType,BindRustType,CassCollection,Cluster,Error,LogLevel,Map,RetryPolicy,Statement};
 use cassandra_cpp::{set_level,stmt};
 
+use chrono::Duration;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -36,7 +37,8 @@ pub fn connect(contact_points: &str) -> Result<CassSession, Error> {
     let mut cluster = Cluster::default();
     cluster.set_contact_points(contact_points).unwrap();
     cluster.set_load_balance_round_robin();
-
+    cluster.set_retry_policy(RetryPolicy::downgrading_consistency_new());
+    cluster.set_request_timeout(Duration::seconds(30));
     cluster.set_protocol_version(4)?;
 
     cluster.connect()
